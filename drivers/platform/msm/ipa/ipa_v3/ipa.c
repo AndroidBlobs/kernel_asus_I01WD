@@ -259,24 +259,6 @@ static int ipa3_clean_modem_rule(void)
 	return val;
 }
 
-static int ipa3_clean_mhip_dl_rule(void)
-{
-	struct ipa_remove_offload_connection_req_msg_v01 req;
-
-	memset(&req, 0, sizeof(struct
-		ipa_remove_offload_connection_req_msg_v01));
-
-	req.clean_all_rules_valid = true;
-	req.clean_all_rules = true;
-
-	if (ipa3_qmi_rmv_offload_request_send(&req)) {
-		IPAWANDBG("clean dl rule cache failed\n");
-		return -EFAULT;
-	}
-
-	return 0;
-}
-
 static int ipa3_active_clients_panic_notifier(struct notifier_block *this,
 		unsigned long event, void *ptr)
 {
@@ -1880,10 +1862,7 @@ static long ipa3_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		memset(&nat_del, 0, sizeof(nat_del));
 		nat_del.table_index = 0;
 		retval = ipa3_nat_del_cmd(&nat_del);
-		if (ipa3_ctx->platform_type == IPA_PLAT_TYPE_APQ)
-			retval = ipa3_clean_mhip_dl_rule();
-		else
-			retval = ipa3_clean_modem_rule();
+		retval = ipa3_clean_modem_rule();
 		ipa3_counter_id_remove_all();
 		break;
 
@@ -2630,6 +2609,10 @@ static long ipa3_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			retval = -EFAULT;
 			break;
 		}
+
+		/* null terminate the string */
+		fst_switch.netdev_name[IPA_RESOURCE_NAME_MAX - 1] = '\0';
+
 		retval = ipa_wigig_send_msg(WIGIG_FST_SWITCH,
 			fst_switch.netdev_name,
 			fst_switch.client_mac_addr,

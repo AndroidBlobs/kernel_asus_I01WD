@@ -33,6 +33,8 @@
 #include "ipa_qmi_service.h"
 #include <linux/rmnet_ipa_fd_ioctl.h>
 #include <linux/ipa.h>
+#include <linux/ip.h> /*AS-K Log Wake Up IP Address Info+*/
+#include <linux/ipv6.h> /*AS-K Log Wake Up IP Address Info+*/
 #include <uapi/linux/net_map.h>
 #include <uapi/linux/msm_rmnet.h>
 #include <net/rmnet_config.h>
@@ -87,6 +89,7 @@ MODULE_PARM_DESC(outstanding_low, "Outstanding low");
 
 static void rmnet_ipa_free_msg(void *buff, u32 len, u32 type);
 static void rmnet_ipa_get_stats_and_update(void);
+extern int ipa_resume_irq_flag_function(void);/*AS-K Log Wake Up IP Address Info+*/
 
 static int ipa3_wwan_add_ul_flt_rule_to_ipa(void);
 static int ipa3_wwan_del_ul_flt_rule_to_ipa(void);
@@ -1321,14 +1324,7 @@ send:
 		spin_unlock_irqrestore(&wwan_ptr->lock, flags);
 		return NETDEV_TX_OK;
 	}
-	/*
-	 * increase the outstanding_pkts count first
-	 * to avoid suspend happens in parallel
-	 * after unlock
-	 */
-	atomic_inc(&wwan_ptr->outstanding_pkts);
 	/* IPA_RM checking end */
-	spin_unlock_irqrestore(&wwan_ptr->lock, flags);
 
 	/*
 	 * both data packets and command will be routed to
@@ -1336,18 +1332,19 @@ send:
 	 */
 	ret = ipa3_tx_dp(IPA_CLIENT_APPS_WAN_PROD, skb, NULL);
 	if (ret) {
-		atomic_dec(&wwan_ptr->outstanding_pkts);
 		if (ret == -EPIPE) {
 			IPAWANERR_RL("[%s] fatal: pipe is not valid\n",
 				dev->name);
 			dev_kfree_skb_any(skb);
 			dev->stats.tx_dropped++;
+			spin_unlock_irqrestore(&wwan_ptr->lock, flags);
 			return NETDEV_TX_OK;
 		}
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
 
+	atomic_inc(&wwan_ptr->outstanding_pkts);
 	dev->stats.tx_packets++;
 	dev->stats.tx_bytes += skb->len;
 	ret = NETDEV_TX_OK;
@@ -1361,6 +1358,7 @@ out:
 				IPA_RM_RESOURCE_WWAN_0_PROD);
 		}
 	}
+	spin_unlock_irqrestore(&wwan_ptr->lock, flags);
 	return ret;
 }
 
@@ -1448,6 +1446,27 @@ static void apps_ipa_packet_receive_notify(void *priv,
 		int result;
 		unsigned int packet_len = skb->len;
 
+		/*AS-K Log Wake Up IP Address Info+*/
+		if (ipa_resume_irq_flag_function() == 1 ) {
+			struct iphdr *ip4h;
+			struct ipv6hdr *ip6h;
+			unsigned char *map_payload;
+			unsigned char ip_version;
+			map_payload = (unsigned char *)(skb->data + sizeof(struct rmnet_map_header_s));
+			ip_version = (*map_payload & 0xF0) >> 4;
+
+			if (ip_version == 0x04) {
+				ip4h = (struct iphdr *) map_payload;
+				pr_err_ratelimited("[WakeUpInfo-IPA] IP4 src: %pI4", &ip4h->saddr);
+				ASUSEvtlog("[WakeUpInfo-IPA] IP4 src: %pI4", &ip4h->saddr);
+			} else if (ip_version == 0x06) {
+				ip6h = (struct ipv6hdr *) map_payload;
+				pr_err_ratelimited("[WakeUpInfo-IPA] IP6 src: %pI6", &ip6h->saddr);
+				ASUSEvtlog("[WakeUpInfo-IPA] IP6 src: %pI6", &ip6h->saddr);
+			}
+		}
+		/*AS-K Log Wake Up IP Address Info-*/
+
 		IPAWANDBG_LOW("Rx packet was received");
 		skb->dev = IPA_NETDEV();
 		skb->protocol = htons(ETH_P_MAP);
@@ -1476,26 +1495,6 @@ static void apps_ipa_packet_receive_notify(void *priv,
 	} else {
 		IPAWANERR("Invalid evt %d received in wan_ipa_receive\n", evt);
 	}
-}
-
-/* Send RSC endpoint info to modem using QMI indication message */
-
-static int ipa_send_rsc_pipe_ind_to_modem(void)
-{
-	struct ipa_endp_desc_indication_msg_v01 req;
-	struct ipa_ep_id_type_v01 *ep_info;
-
-	memset(&req, 0, sizeof(struct ipa_endp_desc_indication_msg_v01));
-	req.ep_info_len = 1;
-	req.ep_info_valid = true;
-	req.num_eps_valid = true;
-	req.num_eps = 1;
-	ep_info = &req.ep_info[req.ep_info_len - 1];
-	ep_info->ep_id = rmnet_ipa3_ctx->ipa3_to_apps_hdl;
-	ep_info->ic_type = DATA_IC_TYPE_AP_V01;
-	ep_info->ep_type = DATA_EP_DESC_TYPE_RSC_PROD_V01;
-	ep_info->ep_status = DATA_EP_STATUS_CONNECTED_V01;
-	return ipa3_qmi_send_rsc_pipe_indication(&req);
 }
 
 static int handle3_ingress_format(struct net_device *dev,
@@ -1599,9 +1598,6 @@ static int handle3_ingress_format(struct net_device *dev,
 	if (ret)
 		ipa3_del_a7_qmap_hdr();
 
-	/* Sending QMI indication message share RSC pipe details*/
-	if (dev->features & NETIF_F_GRO_HW)
-		ipa_send_rsc_pipe_ind_to_modem();
 end:
 	if (ret)
 		IPAWANERR("failed to configure ingress\n");
