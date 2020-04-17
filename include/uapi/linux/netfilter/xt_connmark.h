@@ -1,10 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0+ WITH Linux-syscall-note */
-#ifndef _XT_CONNMARK_H
-#define _XT_CONNMARK_H
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+#ifndef _XT_CONNMARK_H_target
+#define _XT_CONNMARK_H_target
 
-#include <linux/types.h>
+#include <linux/netfilter/xt_connmark.h>
 
-/* Copyright (C) 2002,2004 MARA Systems AB <http://www.marasystems.com>
+#endif /*_XT_CONNMARK_H_target*/
+tems.com>
  * by Henrik Nordstrom <hno@marasystems.com>
  *
  * This program is free software; you can redistribute it and/or modify
