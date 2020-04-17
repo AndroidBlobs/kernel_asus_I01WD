@@ -22,6 +22,7 @@
 #include <linux/extcon.h>
 #include <linux/usb/class-dual-role.h>
 #include "storm-watch.h"
+//#include <linux/qpnp/qpnp-adc.h>  //ASUS BSP +++
 
 enum print_reason {
 	PR_INTERRUPT	= BIT(0),
@@ -102,6 +103,21 @@ enum print_reason {
 #define TYPEC_HIGH_CURRENT_UA		3000000
 
 #define ROLE_REVERSAL_DELAY_MS		2000
+
+//[+++]ASUS : Add asus define
+#define ASUS_ICL_VOTER "ASUS_ICL_VOTER"
+#define CHARGER_TAG "[BAT][CHG]"
+#define ERROR_TAG "[ERR]"
+#define AUTO_TAG "[AUTO]"
+#define CHG_DBG(fmt, ...) printk(KERN_INFO CHARGER_TAG " %s: " fmt, __func__, ##__VA_ARGS__)
+#define CHG_DBG_E(fmt, ...)  printk(KERN_ERR CHARGER_TAG ERROR_TAG " %s: " fmt, __func__, ##__VA_ARGS__)
+#define CHG_DBG_AT(fmt, ...)  printk(KERN_WARNING CHARGER_TAG AUTO_TAG " %s: " fmt, __func__, ##__VA_ARGS__)
+#define THERMAL_ALERT_NONE	0
+#define THERMAL_ALERT_NO_AC	1
+#define THERMAL_ALERT_WITH_AC	2
+#define THERMAL_ALERT_CYCLE	60000
+#define ADF_PATH "/ADF/ADF"
+//[---]ASUS : Add asus define
 
 enum smb_mode {
 	PARALLEL_MASTER = 0,
@@ -258,6 +274,10 @@ static const unsigned int smblib_extcon_cable[] = {
 	EXTCON_NONE,
 };
 
+static const unsigned int asus_extcon_cable[] = {
+	EXTCON_NONE,
+};
+
 enum lpd_reason {
 	LPD_NONE,
 	LPD_MOISTURE_DETECTED,
@@ -367,6 +387,7 @@ struct smb_iio {
 	struct iio_channel	*die_temp_chan;
 	struct iio_channel	*skin_temp_chan;
 	struct iio_channel	*smb_temp_chan;
+	struct iio_channel	*asus_adapter_vadc_chan;
 };
 
 struct smb_charger {
@@ -459,6 +480,24 @@ struct smb_charger {
 	struct alarm		moisture_protection_alarm;
 	struct alarm		chg_termination_alarm;
 
+	/* asus work */
+	struct delayed_work	asus_chg_flow_work;
+	struct delayed_work	asus_adapter_adc_work;
+	struct delayed_work	asus_min_monitor_work;
+	struct delayed_work	asus_batt_RTC_work;
+	struct delayed_work	asus_set_flow_flag_work;
+	struct delayed_work	asus_usb_thermal_work;
+	struct delayed_work	asus_usb_water_work;
+	struct delayed_work	asus_reverse_charge_work;
+	struct delayed_work	asus_cable_capability_check_work;
+	struct delayed_work	asus_reverse_charge_check_camera;
+	struct delayed_work	asus_enable_inov_work;
+	struct delayed_work	asus_check_probe_work;
+	struct delayed_work	asus_check_vbus_work;
+
+	/* asus variables */
+	bool asus_print_usb_src_change;  //Trim the log of usb_source_change_irq
+
 	/* secondary charger config */
 	bool			sec_pl_present;
 	bool			sec_cp_present;
@@ -531,9 +570,7 @@ struct smb_charger {
 	bool			hw_die_temp_mitigation;
 	bool			hw_connector_mitigation;
 	bool			hw_skin_temp_mitigation;
-	bool			en_skin_therm_mitigation;
 	int			connector_pull_up;
-	int			smb_pull_up;
 	int			aicl_5v_threshold_mv;
 	int			default_aicl_5v_threshold_mv;
 	int			aicl_cont_threshold_mv;
@@ -557,6 +594,12 @@ struct smb_charger {
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
 
+	/* asus extcon */
+	struct extcon_dev	*thermal_extcon;
+	struct extcon_dev	*water_extcon;
+	struct extcon_dev	*quickchg_extcon;
+	struct extcon_dev	*reversechg_extcon;
+
 	/* battery profile */
 	int			batt_profile_fcc_ua;
 	int			batt_profile_fv_uv;
@@ -577,6 +620,19 @@ struct smb_charger {
 
 	/* wireless */
 	int			wireless_vout;
+};
+
+//[+++]ASUS : Add gpio control struct
+struct gpio_control {
+	u32 ADC_SW_EN;		//soc_101, init L
+	u32 ADCPWREN_PMI_GP1;	//soc_120, init L
+};
+//[---]ASUS : Add gpio control struct
+
+enum QC_BATT_STATUS {
+	NORMAL = 0,
+	QC,
+	QC_PLUS,
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
@@ -720,9 +776,7 @@ int smblib_get_pe_start(struct smb_charger *chg,
 int smblib_get_prop_charger_temp(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_die_health(struct smb_charger *chg);
-int smblib_get_prop_smb_health(struct smb_charger *chg);
 int smblib_get_prop_connector_health(struct smb_charger *chg);
-int smblib_get_skin_temp_status(struct smb_charger *chg);
 int smblib_get_prop_vph_voltage_now(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_set_prop_pd_current_max(struct smb_charger *chg,
@@ -782,4 +836,7 @@ int smblib_get_irq_status(struct smb_charger *chg,
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
+int ADF_check_status(void);
+void jeita_rule(void);
+void CHG_TYPE_judge(void);
 #endif /* __SMB5_CHARGER_H */

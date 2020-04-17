@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/input/qpnp-power-on.h>
 #include <linux/of_address.h>
+#include <linux/string.h>
 
 #include <asm/cacheflush.h>
 #include <asm/system_misc.h>
@@ -63,7 +64,24 @@ static void scm_disable_sdi(void);
  * There is no API from TZ to re-enable the registers.
  * So the SDI cannot be re-enabled when it already by-passed.
  */
-static int download_mode = 1;
+#ifdef FORCE_RAMDUMP_FEATURE
+int g_force_ramdump = 0;
+int download_mode = 0;
+static int set_download_mode(char *str)
+{
+	if ( strcmp("y", str) == 0 ) {
+		download_mode = 1;
+		g_force_ramdump = 1;
+	} else
+		download_mode = 0;
+
+	printk("download mode = %d\n",download_mode);
+	return 0;
+}
+__setup("RDUMP=", set_download_mode);
+#else
+static int download_mode = 0;
+#endif
 static bool force_warm_reboot;
 
 #ifdef CONFIG_QCOM_DLOAD_MODE
@@ -133,7 +151,7 @@ int scm_set_dload_mode(int arg1, int arg2)
 				&desc);
 }
 
-static void set_dload_mode(int on)
+void set_dload_mode(int on)
 {
 	int ret;
 
@@ -213,6 +231,14 @@ static int dload_set(const char *val, const struct kernel_param *kp)
 
 	return 0;
 }
+
+void set_QPSTInfo_dloadmode(int mode)
+{
+	download_mode = mode;
+	set_dload_mode(download_mode);
+}
+EXPORT_SYMBOL(set_QPSTInfo_dloadmode);
+
 #else
 static void set_dload_mode(int on)
 {
@@ -287,12 +313,12 @@ static void msm_restart_prepare(const char *cmd)
 
 	if (qpnp_pon_check_hard_reset_stored()) {
 		/* Set warm reset as true when device is in dload mode */
-		if (get_dload_mode() ||
+		if (in_panic || get_dload_mode() ||
 			((cmd != NULL && cmd[0] != '\0') &&
 			!strcmp(cmd, "edl")))
 			need_warm_reset = true;
 	} else {
-		need_warm_reset = (get_dload_mode() ||
+		need_warm_reset = (in_panic || get_dload_mode() ||
 				(cmd != NULL && cmd[0] != '\0'));
 	}
 
@@ -330,7 +356,11 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_KEYS_CLEAR);
 			__raw_writel(0x7766550a, restart_reason);
-		} else if (!strncmp(cmd, "oem-", 4)) {
+		} else if (!strncmp(cmd, "official-unlock", 15)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_UNLOCK);
+			__raw_writel(0x6f656d08, restart_reason);
+		}else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			int ret;
 
@@ -340,9 +370,16 @@ static void msm_restart_prepare(const char *cmd)
 					     restart_reason);
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
+		} else if (!strcmp(cmd, "hardreset")){
+			qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 		} else {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_KERNEL);
 			__raw_writel(0x77665501, restart_reason);
 		}
+	}
+	if (in_panic) {
+		qpnp_pon_set_restart_reason(PON_RESTART_REASON_PANIC);
+		__raw_writel(0x77665507, restart_reason);
 	}
 
 	flush_cache_all();
@@ -660,6 +697,13 @@ skip_sysfs_create:
 
 	if (scm_is_call_available(SCM_SVC_PWR, SCM_IO_DEASSERT_PS_HOLD) > 0)
 		scm_deassert_ps_hold_supported = true;
+
+#ifdef FORCE_RAMDUMP_FEATURE
+	if(g_force_ramdump) {
+		download_mode = 1;
+		dload_type = SCM_DLOAD_FULLDUMP;
+	}
+#endif
 
 	set_dload_mode(download_mode);
 	if (!download_mode)
