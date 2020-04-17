@@ -59,6 +59,16 @@
 #include "braille.h"
 #include "internal.h"
 
+#include <linux/wakeup_reason.h>
+
+//ASUS_BSP +++ [PM]Extern values for GPIO, IRQ, SPMI wakeup information for printk.c to Evtlog
+extern int gic_irq_cnt, gic_resume_irq;
+//ASUS_BSP --- [PM]Extern values for GPIO, IRQ, SPMI wakeup information for printk.c to Evtlog
+
+//ASUS_BSP +++ [PM]Extern this flag to check dpm_suspend has been callback for resume_console
+extern unsigned int pm_pwrcs_ret;
+//ASUS_BSP --- [PM]Extern this flag to check dpm_suspend has been callback for resume_console
+
 #ifdef CONFIG_EARLY_PRINTK_DIRECT
 extern void printascii(char *);
 #endif
@@ -77,6 +87,7 @@ int console_printk[4] = {
 int oops_in_progress;
 EXPORT_SYMBOL(oops_in_progress);
 
+int boot_after_60sec = 0;
 /*
  * console_sem protects the console_drivers list, and also
  * provides serialisation for access to the entire console
@@ -1225,6 +1236,9 @@ static size_t print_time(u64 ts, char *buf)
 	if (!buf)
 		return snprintf(NULL, 0, "[%5lu.000000] ", (unsigned long)ts);
 
+	if (boot_after_60sec == 0 && ts >= 60)
+		boot_after_60sec = 1;
+
 	return sprintf(buf, "[%5lu.%06lu] ",
 		       (unsigned long)ts, rem_nsec / 1000);
 }
@@ -2167,6 +2181,7 @@ MODULE_PARM_DESC(console_suspend, "suspend console during suspend"
  */
 void suspend_console(void)
 {
+	ASUSEvtlog("[UTS] System Suspend\n");
 	if (!console_suspend_enabled)
 		return;
 	printk("Suspending console(s) (use no_console_suspend to debug)\n");
@@ -2177,6 +2192,18 @@ void suspend_console(void)
 
 void resume_console(void)
 {
+	ASUSEvtlog("[UTS] System Resume\n");
+
+//ASUS_BSP +++ [PM]Show GIC_IRQ wakeup information in AsusEvtlog
+	if (pm_pwrcs_ret) {
+		if (gic_irq_cnt > 0) {
+			log_wakeup_reason(gic_resume_irq);
+			ASUSEvtlog("[PM] IRQs triggered: %d\n", gic_resume_irq);
+		}
+		pm_pwrcs_ret = 0;
+	}
+//ASUS_BSP --- [PM]Show GIC_IRQ wakeup information in AsusEvtlog
+
 	if (!console_suspend_enabled)
 		return;
 	down_console_sem();
