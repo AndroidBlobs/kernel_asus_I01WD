@@ -62,6 +62,7 @@
 		hsuart0 = &qupv3_se13_4uart;
 		spi0 = &qupv3_se3_spi;
 		i2c0 = &qupv3_se4_i2c;
+		i2c1 = &qupv3_se8_i2c;
 	};
 
 	cpus {
@@ -574,21 +575,13 @@
 			compatible = "android,firmware";
 			shared_meta: vbmeta {
 				compatible = "android,vbmeta";
-				parts = "vbmeta,boot,system,vendor,dtbo,odm";
+				parts = "vbmeta,boot,system,vendor,dtbo";
 			};
 			android_q_fstab: fstab {
 				compatible = "android,fstab";
 				vendor {
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/soc/8804000.sdhci/by-name/vendor";
-					type = "ext4";
-					mnt_flags = "ro,barrier=1,discard";
-					fsmgr_flags = "wait,slotselect,avb";
-					status = "ok";
-				};
-				odm {
-					compatible = "android,odm";
-					dev = "/dev/block/platform/soc/8804000.sdhci/by-name/odm";
 					type = "ext4";
 					mnt_flags = "ro,barrier=1,discard";
 					fsmgr_flags = "wait,slotselect,avb";
@@ -693,6 +686,15 @@
 			compatible = "removed-dma-pool";
 			no-map;
 			reg = <0x0 0x98900000 0x0 0x1400000>;
+		};
+
+		// Total = 99D00000
+		ramoops: ramoops {
+			compatible = "removed-dma-pool", "ramoops";
+			reg = <0 0x99E00000 0 0x00100000>;
+			record-size = <0x20000>;
+			console-size = <0x40000>;
+			pmsg-size = <0x20000>;
 		};
 
 		qseecom_mem: qseecom_region {
@@ -818,7 +820,7 @@
 		qcom,spss-prod-firmware-name = "spss1p";  /* 8 chars max */
 		qcom,spss-debug-reg-addr = <0x01886020>;
 		qcom,spss-emul-type-reg-addr = <0x01fc8004>;
-		status = "ok";
+		status = "disabled";
 	};
 
 	qcom,spcom {
@@ -1822,7 +1824,7 @@
 		clock-names = "xo";
 		qcom,proxy-clock-names = "xo";
 		qcom,pil-generic-irq-handler;
-		status = "ok";
+		status = "disabled";
 		qcom,signal-aop;
 		qcom,complete-ramdump;
 
@@ -3015,7 +3017,6 @@
 		qcom,fde-key-size;
 		qcom,appsbl-qseecom-support;
 		qcom,commonlib64-loaded-by-uefi;
-		qcom,qsee-reentrancy-support = <2>;
 	};
 
 	qcom_smcinvoke: smcinvoke@87900000 {
@@ -3563,7 +3564,7 @@
 
 	qcom,rmtfs_sharedmem@0 {
 		compatible = "qcom,sharedmem-uio";
-		reg = <0x0 0x200000>;
+		reg = <0x0 0x300000>;
 		reg-names = "rmtfs";
 		qcom,client-id = <0x00000001>;
 		qcom,guard-memory;
@@ -3859,6 +3860,19 @@
 		qcom,smmu-coherent;
 		qcom,keep-radio-on-during-sleep;
 		status = "disabled";
+	};
+
+	/* goodix fingerprint */
+	goodixfp {
+		compatible = "goodix,fingerprint";
+		fp-gpio-reset = <&tlmm 57 0x0>;
+		fp-gpio-irq = <&tlmm 118 0x0>;
+		fp-gpio-vcc3v0 = <&tlmm 9 0x0>;
+
+		pinctrl-names = "defalut";
+		pinctrl-0 = <&fp_default>;
+
+		status = "ok";
 	};
 
 	tspp: msm_tspp@0x8880000 {

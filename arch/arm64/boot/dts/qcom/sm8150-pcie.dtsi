@@ -147,12 +147,13 @@
 				0x0844 0x03 0x0>;
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&pcie0_clkreq_default
-			&pcie0_perst_default
-			&pcie0_wake_default>;
+		pinctrl-0 = <//&pcie0_clkreq_default
+			//&pcie0_perst_default
+			//&pcie0_wake_default
+			>;
 
-		perst-gpio = <&tlmm 35 0>;
-		wake-gpio = <&tlmm 37 0>;
+		//perst-gpio = <&tlmm 35 0>;
+		//wake-gpio = <&tlmm 37 0>;
 
 		gdsc-vdd-supply = <&pcie_0_gdsc>;
 		vreg-1.8-supply = <&pm8150l_l3>;
@@ -163,9 +164,6 @@
 		qcom,vreg-0.9-voltage-level = <880000 880000 24000>;
 		qcom,vreg-cx-voltage-level = <RPMH_REGULATOR_LEVEL_MAX
 						RPMH_REGULATOR_LEVEL_NOM 0>;
-		qcom,bw-scale = <RPMH_REGULATOR_LEVEL_LOW_SVS 19200000
-				RPMH_REGULATOR_LEVEL_LOW_SVS 19200000
-				RPMH_REGULATOR_LEVEL_NOM 100000000>;
 
 		msi-parent = <&pcie0_msi>;
 
@@ -486,9 +484,6 @@
 		qcom,vreg-0.9-voltage-level = <880000 880000 24000>;
 		qcom,vreg-cx-voltage-level = <RPMH_REGULATOR_LEVEL_MAX
 						RPMH_REGULATOR_LEVEL_NOM 0>;
-		qcom,bw-scale = <RPMH_REGULATOR_LEVEL_LOW_SVS 19200000
-				RPMH_REGULATOR_LEVEL_LOW_SVS 19200000
-				RPMH_REGULATOR_LEVEL_NOM 100000000>;
 
 		msi-parent = <&pcie1_msi>;
 
