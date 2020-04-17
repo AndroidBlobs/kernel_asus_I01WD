@@ -1765,7 +1765,7 @@ void __init memblock_allow_resize(void)
 
 static int __init early_memblock(char *p)
 {
-	if (p && strstr(p, "debug"))
+	//if (p && strstr(p, "debug"))
 		memblock_debug = 1;
 	return 0;
 }
