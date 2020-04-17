@@ -323,7 +323,7 @@ struct dwc3_msm {
 	enum usb_device_speed override_usb_speed;
 	u32			*gsi_reg;
 	int			gsi_reg_offset_cnt;
-	bool			gsi_io_coherency_disabled;
+	bool	gsi_io_coherency_disabled;
 
 	struct notifier_block	dpdm_nb;
 	struct regulator	*dpdm_reg;
@@ -1158,15 +1158,15 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 	len = req->buf_len * req->num_bufs;
 	req->buf_base_addr = dma_alloc_attrs(dwc->sysdev, len, &req->dma,
-					GFP_KERNEL, dma_attr);
+	GFP_KERNEL, dma_attr);
 	if (!req->buf_base_addr) {
-		dev_err(dwc->dev, "%s: buf_base_addr allocate failed %s\n",
-				dep->name);
-		return -ENOMEM;
+	dev_err(dwc->dev, "%s: buf_base_addr allocate failed %s\n",
+	dep->name);
+	return -ENOMEM;
 	}
 
 	dma_get_sgtable(dwc->sysdev, &req->sgt_data_buff, req->buf_base_addr,
-			req->dma, len);
+	req->dma, len);
 
 	buffer_addr = req->dma;
 
@@ -1279,7 +1279,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 free_trb_buffer:
 	dma_free_attrs(dwc->sysdev, len, req->buf_base_addr, req->dma,
-			dma_attr);
+	dma_attr);
 	req->buf_base_addr = NULL;
 	sg_free_table(&req->sgt_data_buff);
 	return -ENOMEM;
@@ -1318,7 +1318,7 @@ static void gsi_free_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 	/* free TRB buffers */
 	dma_free_attrs(dwc->sysdev, req->buf_len * req->num_bufs,
-		req->buf_base_addr, req->dma, dma_attr);
+	req->buf_base_addr, req->dma, dma_attr);
 	req->buf_base_addr = NULL;
 	sg_free_table(&req->sgt_data_buff);
 }
@@ -1931,13 +1931,8 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		reg |= DWC3_GCTL_CORESOFTRESET;
 		dwc3_msm_write_reg(mdwc->base, DWC3_GCTL, reg);
 
-		/*
-		 * If core could not recover after MAX_ERROR_RECOVERY_TRIES
-		 * skip the restart USB work and keep the core in softreset
-		 * state
-		 */
-		if (dwc->retries_on_error < MAX_ERROR_RECOVERY_TRIES)
-			schedule_work(&mdwc->restart_usb_work);
+		/* restart USB which performs full reset and reconnect */
+		schedule_work(&mdwc->restart_usb_work);
 		break;
 	case DWC3_CONTROLLER_RESET_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_RESET_EVENT received\n");
@@ -2623,7 +2618,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 		mdwc->lpm_flags |= MDWC3_ASYNC_IRQ_WAKE_CAPABILITY;
 	}
 
-	dev_info(mdwc->dev, "DWC3 in low power mode\n");
+	dev_info(mdwc->dev, "[USB] DWC3 in low power mode\n");
 	dbg_event(0xFF, "Ctl Sus", atomic_read(&dwc->in_lpm));
 
 	/* kick_sm if it is waiting for lpm sequence to finish */
@@ -2790,7 +2785,7 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 		mdwc->lpm_flags &= ~MDWC3_ASYNC_IRQ_WAKE_CAPABILITY;
 	}
 
-	dev_info(mdwc->dev, "DWC3 exited from low power mode\n");
+	dev_info(mdwc->dev, "[USB] DWC3 exited from low power mode\n");
 
 	/* Enable core irq */
 	if (dwc->irq)
@@ -2823,26 +2818,26 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 	flush_delayed_work(&mdwc->sm_work);
 
 	if (mdwc->id_state == DWC3_ID_FLOAT) {
-		dev_dbg(mdwc->dev, "XCVR: ID set\n");
+		dev_info(mdwc->dev, "[USB] XCVR: ID set\n");
 		set_bit(ID, &mdwc->inputs);
 	} else {
-		dev_dbg(mdwc->dev, "XCVR: ID clear\n");
+		dev_info(mdwc->dev, "[USB] XCVR: ID clear\n");
 		clear_bit(ID, &mdwc->inputs);
 	}
 
 	if (mdwc->vbus_active && !mdwc->in_restart) {
-		dev_dbg(mdwc->dev, "XCVR: BSV set\n");
+		dev_info(mdwc->dev, "[USB] XCVR: BSV set\n");
 		set_bit(B_SESS_VLD, &mdwc->inputs);
 	} else {
-		dev_dbg(mdwc->dev, "XCVR: BSV clear\n");
+		dev_info(mdwc->dev, "[USB] XCVR: BSV clear\n");
 		clear_bit(B_SESS_VLD, &mdwc->inputs);
 	}
 
 	if (mdwc->suspend) {
-		dev_dbg(mdwc->dev, "XCVR: SUSP set\n");
+		dev_info(mdwc->dev, "[USB] XCVR: SUSP set\n");
 		set_bit(B_SUSPEND, &mdwc->inputs);
 	} else {
-		dev_dbg(mdwc->dev, "XCVR: SUSP clear\n");
+		dev_info(mdwc->dev, "[USB] XCVR: SUSP clear\n");
 		clear_bit(B_SUSPEND, &mdwc->inputs);
 	}
 
@@ -2879,7 +2874,7 @@ static void dwc3_resume_work(struct work_struct *w)
 			dwc->maximum_speed = USB_SPEED_HIGH;
 
 		if (mdwc->override_usb_speed &&
-			mdwc->override_usb_speed <= dwc->maximum_speed) {
+				mdwc->override_usb_speed < dwc->maximum_speed) {
 			dwc->maximum_speed = mdwc->override_usb_speed;
 			dwc->gadget.max_speed = dwc->maximum_speed;
 			dbg_event(0xFF, "override_speed",
@@ -3172,7 +3167,7 @@ static int dwc3_msm_id_notifier(struct notifier_block *nb,
 
 	mdwc->ext_idx = enb->idx;
 
-	dev_dbg(mdwc->dev, "host:%ld (id:%d) event received\n", event, id);
+	dev_info(mdwc->dev, "[USB] host:%ld (id:%d) event received\n", event, id);
 
 	mdwc->id_state = id;
 	dbg_event(0xFF, "id_state", mdwc->id_state);
@@ -3227,7 +3222,7 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 
 	mdwc->ext_idx = enb->idx;
 
-	dev_dbg(mdwc->dev, "vbus:%ld event received\n", event);
+	dev_info(mdwc->dev, "[USB] vbus:%ld event received\n", event);
 
 	mdwc->vbus_active = event;
 	if ((dwc->dr_mode == USB_DR_MODE_OTG) && !mdwc->in_restart)
@@ -3754,7 +3749,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 				"qcom,use-pdc-interrupts");
 
 	mdwc->gsi_io_coherency_disabled = of_property_read_bool(node,
-				"qcom,gsi-disable-io-coherency");
+	"qcom,gsi-disable-io-coherency");
 
 	dwc3_set_notifier(&dwc3_msm_notify_event);
 
@@ -4178,7 +4173,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	}
 
 	if (on) {
-		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
+		dev_info(mdwc->dev, "[USB] %s: turn on host\n", __func__);
 
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 		pm_runtime_get_sync(mdwc->dev);
@@ -4262,7 +4257,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		schedule_delayed_work(&mdwc->perf_vote_work,
 				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
 	} else {
-		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
+		dev_info(mdwc->dev, "[USB] %s: turn off host\n", __func__);
 
 		usb_unregister_atomic_notify(&mdwc->usbdev_nb);
 		if (!IS_ERR_OR_NULL(mdwc->vbus_reg))
